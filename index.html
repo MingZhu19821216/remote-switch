@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>云乾充电桩管理平台</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer></script>
+    <script src="./mockData.js" defer></script>
+    <script src="./main.js" defer></script>
+  </head>
+  <body>
+    <div id="app" v-cloak>
+      <section v-if="!isAuthenticated" class="login">
+        <div class="login__panel">
+          <h1 class="login__title">云乾充电桩管理平台</h1>
+          <p class="login__subtitle">请登录后继续</p>
+          <form class="login__form" @submit.prevent="handleLogin">
+            <label class="login__field">
+              <span>账号</span>
+              <input
+                type="text"
+                v-model.trim="loginForm.username"
+                :disabled="authLoading"
+                required
+                placeholder="输入账号，例如 admin"
+              />
+            </label>
+            <label class="login__field">
+              <span>密码</span>
+              <input
+                type="password"
+                v-model.trim="loginForm.password"
+                :disabled="authLoading"
+                required
+                placeholder="输入密码，例如 123456"
+              />
+            </label>
+            <button class="login__button" type="submit" :disabled="authLoading">
+              {{ authLoading ? "登录中..." : "登录" }}
+            </button>
+            <p v-if="loginError" class="login__error">{{ loginError }}</p>
+            <p class="login__hint">
+              测试账号：<code>admin</code> / <code>123456</code> 或 <code>operator</code> / <code>operator123</code>
+            </p>
+          </form>
+        </div>
+      </section>
+
+      <div v-else class="dashboard">
+        <header class="dashboard__header">
+          <div class="header__left">
+            <div class="header__weather">天气：多云 25℃</div>
+            <div class="header__link">空调电源状态</div>
+          </div>
+          <div class="header__center">云乾充电桩管理平台</div>
+          <div class="header__right">
+            <div class="header__notice">烟感报警</div>
+            <div class="header__time">{{ formattedUpdatedAt }}</div>
+            <div class="header__user" v-if="currentUser">
+              <div class="header__avatar">{{ currentUser.displayName?.slice(0, 1) }}</div>
+              <div class="header__profile">
+                <div class="header__name">{{ currentUser.displayName }}</div>
+                <div class="header__role">{{ currentUser.role }}</div>
+              </div>
+              <button class="header__logout" @click="handleLogout">退出</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="dashboard__stats">
+          <div
+            class="stat-card"
+            v-for="stat in statsCards"
+            :key="stat.id"
+          >
+            <div class="stat-card__label">{{ stat.label }}</div>
+            <div class="stat-card__value">{{ stat.value }}</div>
+            <div class="stat-card__unit">{{ stat.unit }}</div>
+          </div>
+        </section>
+
+        <section class="dashboard__main">
+          <aside class="dashboard__sidebar">
+            <div class="panel panel--warn">
+              <div class="panel__title">异常状态预警</div>
+              <ul class="alerts">
+                <li class="alerts__item" v-for="alert in dashboard.alerts" :key="alert.id">
+                  <div class="alerts__title">{{ alert.title }}</div>
+                  <div class="alerts__time">{{ alert.time }}</div>
+                </li>
+              </ul>
+            </div>
+
+            <div class="panel panel--usage">
+              <div class="panel__title">使用率</div>
+              <div class="usage__tabs">
+                <button
+                  class="usage__tab"
+                  v-for="tab in usageTabs"
+                  :key="tab.key"
+                  :class="{ 'usage__tab--active': tab.key === usageRange }"
+                  @click="usageRange = tab.key"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
+              <div class="usage__stats">
+                <div class="usage__percent">{{ usagePercent }}%</div>
+                <div class="usage__label">稼动率</div>
+              </div>
+            </div>
+
+            <div class="panel panel--yesterday">
+              <div class="panel__title">昨日充电状态</div>
+              <div class="yesterday__metric">
+                <div class="metric__label">充电次数</div>
+                <div class="metric__value">{{ dashboard.yesterday.chargeCount }}</div>
+              </div>
+              <div class="yesterday__metric">
+                <div class="metric__label">充电断断</div>
+                <div class="metric__value">{{ dashboard.yesterday.trips }}</div>
+              </div>
+            </div>
+          </aside>
+
+          <main class="dashboard__content">
+            <div class="panel panel--large">
+              <div class="panel__title">
+                每日充电次数(时间段)
+                <span class="panel__actions">MORE</span>
+              </div>
+              <div class="panel__body">
+                <div id="daily-chart" class="chart"></div>
+              </div>
+            </div>
+
+            <div class="panel panel--table">
+              <div class="panel__title">
+                巡检信息
+                <span class="panel__actions">MORE</span>
+              </div>
+              <div class="panel__body">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>巡检日期</th>
+                      <th>巡检次数</th>
+                      <th>巡检总人数</th>
+                      <th>巡检单位</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in dashboard.patrols" :key="item.date">
+                      <td>{{ item.date }}</td>
+                      <td>{{ item.count }}</td>
+                      <td>{{ item.people }}</td>
+                      <td>{{ item.org }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel-group">
+              <div class="panel">
+                <div class="panel__title">
+                  实时功率
+                  <span class="panel__actions">MORE</span>
+                </div>
+                <div class="panel__body">
+                  <div id="power-chart" class="chart chart--small"></div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel__title">
+                  一周每日充电总时长/每日充断
+                  <span class="panel__actions">MORE</span>
+                </div>
+                <div class="panel__body">
+                  <div id="weekly-chart" class="chart chart--small"></div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel__title">
+                  月能耗
+                  <span class="panel__actions">MORE</span>
+                </div>
+                <div class="panel__body">
+                  <div id="monthly-chart" class="chart chart--small"></div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>
